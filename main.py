@@ -30,7 +30,7 @@ def fetch_or_load_smp_data():
 smp_data = fetch_or_load_smp_data()
 
 # Filtering data for sample stock
-sample_stock = smp_data.loc[smp_data.index.get_level_values('ticker') == 'GOOGL'].copy()
+sample_stock = smp_data.loc[smp_data.index.get_level_values('ticker') == 'AAPL'].copy()
 
 # Handle missing values
 sample_stock.loc[:, 'Close'].fillna(method='ffill', inplace=True)
@@ -92,6 +92,20 @@ print("Best Parameters:", rf_cv.best_params_)
 # Predictions on test data
 predictions = rf_cv.best_estimator_.predict(X_test)
 
+def calculate_roi(strategy_data):
+    # Step 2: Calculate Daily Returns
+    strategy_data['Daily_Return'] = strategy_data['Close'].pct_change()
+
+    # Step 4: Calculate Strategy Returns
+    strategy_data['Strategy_Return'] = strategy_data['Daily_Return'] * strategy_data['Predicted_Label']
+
+    # Step 5: Cumulative Returns
+    strategy_data['Cumulative_Return'] = (1 + strategy_data['Strategy_Return']).cumprod() - 1
+
+    # Step 6: Calculate ROI
+    roi = strategy_data['Cumulative_Return'].iloc[-1] * 100
+    return roi
+
 # Evaluate model performance
 print("Accuracy:", accuracy_score(y_test, predictions))
 print("\nClassification Report:")
@@ -101,11 +115,16 @@ print(confusion_matrix(y_test, predictions))
 
 # Strategy Implementation and Backtesting
 label_map = {'buy': -1, 'sell': 1, 'hold': 0}
+test_data = test_data.copy()  # Create a copy to avoid SettingWithCopyWarning
 test_data['Predicted_Label'] = predictions
 test_data.loc[:, 'Predicted_Label'] = test_data['Predicted_Label'].map(label_map)
 test_data.loc[:, 'Strategy_Return'] = test_data['Next_Day_Return'] * test_data['Predicted_Label']
 cumulative_returns = test_data['Strategy_Return'].cumsum()
 cumulative_returns.index = pd.to_datetime([x[0] for x in cumulative_returns.index])
+
+# Calculate ROI
+roi = calculate_roi(test_data)
+print(f"ROI: {roi:.2f}%")
 
 # Plotting Cumulative Returns
 plt.figure(figsize=(10, 6))
@@ -115,3 +134,10 @@ plt.xlabel('Date')
 plt.ylabel('Cumulative Return')
 plt.grid(True)
 plt.show()
+
+import joblib  # Import joblib for model loading
+# Save the trained model
+joblib.dump(rf_cv.best_estimator_, 'mainModel.joblib')
+
+# Save the training data
+train_data.to_csv('train_data.csv')
